@@ -1,6 +1,7 @@
 package sockit
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -19,6 +20,9 @@ type Conn interface {
 	SendPacket(p Packet) error
 
 	ReadPacket() (Packet, error)
+
+	// Stream create s streamer, all the data was treated as raw binary data
+	Stream() (Streamer, error)
 
 	Close() error
 }
@@ -53,8 +57,6 @@ func (c *conn) Close() error {
 	return nil
 }
 
-var DebugReadSend = false
-
 func (c *conn) SendPacket(p Packet) error {
 	c.wrLock.Lock()
 	defer c.wrLock.Unlock()
@@ -67,17 +69,6 @@ func (c *conn) SendPacket(p Packet) error {
 	return c.codec.Write(wr, p)
 }
 
-type debugWriter struct {
-	w io.Writer
-}
-
-func (dw debugWriter) Write(p []byte) (int, error) {
-	n, err := dw.w.Write(p)
-	fmt.Println("write data:", p[:n])
-	fmt.Println("write data hex:", hex.EncodeToString(p[:n]))
-	return n, err
-}
-
 func (c *conn) ReadPacket() (Packet, error) {
 	c.rdLock.Lock()
 	defer c.rdLock.Unlock()
@@ -87,6 +78,33 @@ func (c *conn) ReadPacket() (Packet, error) {
 		rd = debugReader{c}
 	}
 	return c.codec.Read(rd)
+}
+
+func (c *conn) Stream() (Streamer, error) {
+	c.rdLock.Lock()
+	c.wrLock.Lock()
+
+	return &streamer{
+		conn: c.Conn,
+		buf:  bytes.NewBuffer(nil),
+		releaseFunc: func() {
+			c.wrLock.Unlock()
+			c.rdLock.Unlock()
+		},
+	}, nil
+}
+
+var DebugReadSend = false
+
+type debugWriter struct {
+	w io.Writer
+}
+
+func (dw debugWriter) Write(p []byte) (int, error) {
+	n, err := dw.w.Write(p)
+	fmt.Println("write data:", p[:n])
+	fmt.Println("write data hex:", hex.EncodeToString(p[:n]))
+	return n, err
 }
 
 type debugReader struct {

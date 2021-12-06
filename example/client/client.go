@@ -47,7 +47,7 @@ func main() {
 
 	handler.cli = client
 
-	if _,err := client.Dial("tcp", "127.0.0.1:9090"); err != nil {
+	if _, err := client.Dial("tcp", "127.0.0.1:9090"); err != nil {
 		panic(err)
 	}
 
