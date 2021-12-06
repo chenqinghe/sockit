@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>websocket test</title>
+</head>
+<body>
+<div id="screen" style="border: solid 1px black;min-height: 600px;background-color: bisque;padding:10px">
+
+</div>
+</body>
+<script>
+
+
+    fetch("http://localhost:8081/sign?pod=localhost-01001").then(async resp => {
+        const token = await resp.text()
+        const ws = new WebSocket("ws://localhost:8080/ws?token=" + token)
+
+        ws.onopen = function (evt) {
+            console.log("open success", ws, evt)
+            ws.send(JSON.stringify({
+                name: "babba",
+            }))
+        }
+
+        ws.onclose = function (evt) {
+            console.log("conn closed")
+        }
+
+        ws.onmessage = function (evt) {
+            console.log("msg:", evt.type, evt.data)
+            let content = document.getElementById("screen").innerHTML
+            content += evt.data + "<br/>"
+            document.getElementById("screen").innerHTML = content
+        }
+
+        ws.onerror = function (evt) {
+            console.log("error:", evt)
+        }
+
+
+    }).catch(err => {
+        console.log("fetch token error:", err)
+    })
+
+
+</script>
+</html>
