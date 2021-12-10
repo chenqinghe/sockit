@@ -116,3 +116,92 @@ func (r debugReader) Read(p []byte) (int, error) {
 	fmt.Println("read data:", p[:n])
 	return n, err
 }
+
+type priporityReader struct {
+	rwc io.ReadWriteCloser
+
+	rdbuf [4096]byte
+	wrbuf [4096]byte
+
+	r, w int
+
+	readable chan struct{}
+	writable chan struct{}
+
+	err error
+
+	takeover chan struct{}
+	returned chan struct{}
+}
+
+func newPriporityReader(rw io.ReadWriter) *priporityReader {
+	r := &priporityReader{
+		rwc: rw,
+	}
+
+	go r.readLoop()
+	go r.writeLoop()
+
+	return r
+}
+
+func (pr *priporityReader) readLoop() {
+	for {
+		_, err := pr.rwc.Read(pr.rdbuf[pr.r:])
+		if err != nil {
+			pr.err = err
+			pr.rwc.Close()
+			return
+		}
+
+		pr.readable <- struct{}{}
+	}
+}
+
+func (pr *priporityReader) writeLoop() {
+	for {
+		_, err := pr.rwc.Write(pr.rdbuf[:pr.w])
+		if err != nil {
+			pr.err = err
+			pr.rwc.Close()
+			return
+		}
+
+		pr.readable <- struct{}{}
+	}
+}
+
+func (pr *priporityReader) Read(p []byte) (int, error) {
+
+RETRY:
+	if len(p) <= pr.r {
+		copy(p, pr.rdbuf[:pr.r])
+		pr.r -= len(p)
+		return len(p), nil
+	}
+
+	n := copy(p, pr.rdbuf[:pr.r])
+	pr.r -= n
+
+	if n > 0 {
+		return n, nil
+	}
+
+	if pr.err != nil {
+		return 0, pr.err
+	}
+
+	select {
+	case <-pr.readable:
+		goto RETRY
+	case <-pr.takeover:
+		<-pr.returned
+		goto RETRY
+	}
+}
+
+func (pr *priporityReader) Write(p []byte) (int, error) {
+	pr.rwc.(*net.TCPConn).SetLinger( )
+
+	return pr.rwc.Write(p)
+}

@@ -122,5 +122,5 @@ func (s *Session) RemoteAddr() net.Addr {
 }
 
 func (s *Session) Stream() (Streamer, error) {
-	return s.c.Stream()
+	//return s.c.Stream()
 }
