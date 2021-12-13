@@ -12,8 +12,9 @@ import (
 type Session struct {
 	id int64
 
-	c   Conn
-	mgr ConnManager
+	c       Conn
+	mgr     ConnManager
+	handler Handler
 
 	user User
 
@@ -28,12 +29,13 @@ type Session struct {
 
 var idGenerator int64
 
-func newSession(c Conn, mgr ConnManager, user User) *Session {
+func NewSession(c Conn, mgr ConnManager, user User, handler Handler) *Session {
 	sess := &Session{
 		id:       atomic.AddInt64(&idGenerator, 1),
 		c:        c,
 		mgr:      mgr,
 		user:     user,
+		handler:  handler,
 		dataLock: &sync.RWMutex{},
 		data:     make(map[string]interface{}),
 		closed:   make(chan struct{}),
@@ -45,8 +47,6 @@ func newSession(c Conn, mgr ConnManager, user User) *Session {
 }
 
 func (s *Session) readPacket() {
-	handler := s.mgr.Handler()
-
 	for {
 		packet, err := s.c.ReadPacket()
 		if err != nil {
@@ -67,7 +67,7 @@ func (s *Session) readPacket() {
 
 		s.lastPackTs = time.Now()
 
-		go handler.Handle(packet, s)
+		go s.handler.Handle(packet, s)
 	}
 }
 

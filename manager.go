@@ -69,7 +69,7 @@ func (m *Manager) StoreConn(c Conn) (*Session, error) {
 		}
 	}
 
-	sess := newSession(c, m, user)
+	sess := NewSession(c, m, user, m.handler)
 
 	m.mu.Lock()
 	m.conns[sess.Id()] = sess

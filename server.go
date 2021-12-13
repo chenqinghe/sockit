@@ -23,9 +23,6 @@ type ConnManager interface {
 	// Every stored Session will be passed to function.
 	RangeSession(fn func(session *Session))
 
-	// Handler should return a packet handler
-	Handler() Handler
-
 	// Close close all sessions and release all resources.
 	Close() error
 }
