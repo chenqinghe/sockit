@@ -84,10 +84,6 @@ func (m *Manager) StoreConn(c Conn) (*Session, error) {
 	return sess, nil
 }
 
-func (m *Manager) Handler() Handler {
-	return m.handler
-}
-
 func (m *Manager) SetAuthenticator(authenticator Authenticator) {
 	m.Authenticator = authenticator
 }
