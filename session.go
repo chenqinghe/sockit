@@ -120,7 +120,3 @@ func (s *Session) LocalAddr() net.Addr {
 func (s *Session) RemoteAddr() net.Addr {
 	return s.c.RemoteAddr()
 }
-
-func (s *Session) Stream() (Streamer, error) {
-	return s.c.Stream()
-}
