@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync/atomic"
 )
@@ -18,8 +19,8 @@ const (
 
 // streamer is NOT concurrent safe
 type streamer struct {
-	conn io.ReadWriter
-	buf  *bytes.Buffer
+	rw  io.ReadWriter
+	buf *bytes.Buffer
 
 	closed      int32
 	releaseFunc func()
@@ -42,7 +43,7 @@ func (s *streamer) Read(p []byte) (int, error) {
 	}
 
 	lengthBytes := make([]byte, StreamerLengthByteWidth)
-	_, err := io.ReadFull(s.conn, lengthBytes)
+	_, err := io.ReadFull(s.rw, lengthBytes)
 	if err != nil {
 		if err == io.EOF {
 			return 0, io.ErrUnexpectedEOF
@@ -55,12 +56,16 @@ func (s *streamer) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	if n, err := io.CopyN(s.buf, s.conn, int64(length)); err != nil {
+	fmt.Println("data length:", lengthBytes, length)
+
+	if n, err := io.CopyN(s.buf, s.rw, int64(length)); err != nil {
 		if err == io.EOF {
 			return int(n), io.ErrUnexpectedEOF
 		}
 		return int(n), err
 	}
+
+	fmt.Println("read from remote ok")
 
 	return s.buf.Read(p)
 }
@@ -71,6 +76,7 @@ func (s *streamer) Write(p []byte) (int, error) {
 	if atomic.LoadInt32(&s.closed) == 1 {
 		return 0, ErrStreamerClosed
 	}
+
 	if len(p) == 0 {
 		return 0, nil
 	}
@@ -80,10 +86,12 @@ func (s *streamer) Write(p []byte) (int, error) {
 
 	length := make([]byte, StreamerLengthByteWidth)
 	binary.BigEndian.PutUint16(length, uint16(len(p)))
-	if _, err := s.conn.Write(length); err != nil {
+
+	fmt.Println("write length:", uint16(len(p)), length)
+	if _, err := s.rw.Write(length); err != nil {
 		return 0, err
 	}
-	return s.conn.Write(p)
+	return s.rw.Write(p)
 }
 
 func (s *streamer) Close() error {
@@ -92,7 +100,7 @@ func (s *streamer) Close() error {
 	}
 	s.closed = 1
 
-	if _, err := s.Write([]byte{0, 0}); err != nil {
+	if _, err := s.rw.Write([]byte{0, 0}); err != nil {
 		return err
 	}
 

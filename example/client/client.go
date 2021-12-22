@@ -19,15 +19,15 @@ func main() {
 		KeepaliveRespType: 0x04,
 	}
 	client := sockit.NewClient(codec, handler, &sockit.NewClientOption{
-		KeepalivePeriod: time.Second,
-		EnableKeepalive: true,
-		HeartbeatPacketFactory: func() sockit.Packet {
-			return codeclib.TLVPacket{
-				PacketHead: codeclib.PacketHead{
-					Type: 0x03,
-				},
-			}
-		},
+		//KeepalivePeriod: time.Second,
+		//EnableKeepalive: true,
+		//HeartbeatPacketFactory: func() sockit.Packet {
+		//	return codeclib.TLVPacket{
+		//		PacketHead: codeclib.PacketHead{
+		//			Type: 0x03,
+		//		},
+		//	}
+		//},
 		OnConnected: func(c sockit.Conn) error {
 			data := []byte(`{"token":"fasdfsdfasdfadsf"}`)
 			return c.SendPacket(codeclib.TLVPacket{
@@ -47,9 +47,26 @@ func main() {
 
 	handler.cli = client
 
-	if _, err := client.Dial("tcp", "127.0.0.1:9090"); err != nil {
+	sess, err := client.Dial("tcp", "127.0.0.1:9090")
+	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		time.Sleep(time.Second * 3)
+
+		sess.SendPacket(codeclib.TLVPacket{
+			PacketHead: codeclib.PacketHead{
+				Type:      0x01,
+				Version:   1,
+				ID:        1,
+				Timestamp: time.Now().Unix(),
+				Length:    54,
+			},
+			Data: []byte(`{"subject":"upload_file","payload":{"name":"123.txt"}}`),
+		})
+
+	}()
 
 	ch := make(chan os.Signal, 1)
 
@@ -90,6 +107,27 @@ func (h *packetHandler) Handle(p sockit.Packet, s *sockit.Session) {
 		} else {
 			fmt.Println("login failed!")
 		}
+	case "upload_file_resp":
+		fmt.Println("allowed to upload file")
+		stream, err := s.Stream()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("start upload")
+
+		if _, err := stream.Write([]byte("hello world")); err != nil {
+			panic(err)
+		}
+		fmt.Println("start upload continue")
+
+		if _, err := stream.Write([]byte("this is a sentence")); err != nil {
+			panic(err)
+		}
+		if err := stream.Close(); err != nil {
+			panic(err)
+		}
+
+		fmt.Println("stream closed")
 	}
 }
 

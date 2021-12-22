@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -19,7 +20,7 @@ func main() {
 	mgr := sockit.NewManager(handler, nil)
 	mgr.Authenticator = &tokenAuthenticator{}
 	mgr.SetKeepAlivePeriod(time.Second * 30)
-	mgr.SetKeepAlive(true)
+	//mgr.SetKeepAlive(true)
 
 	handler.mgr = mgr
 
@@ -55,7 +56,7 @@ type packetHandler struct {
 func (ph *packetHandler) Handle(p sockit.Packet, sess *sockit.Session) {
 	packet := p.(codec.TLVPacket)
 
-	fmt.Println("handle a packet:", packet)
+	//fmt.Println("handle a packet:", packet)
 
 	if packet.IsKeepAlive() {
 		packet.Type = 0x04
@@ -63,6 +64,58 @@ func (ph *packetHandler) Handle(p sockit.Packet, sess *sockit.Session) {
 			fmt.Println("send packet error:", err)
 			sess.Close()
 		}
+		return
 	}
 
+	var proto = Protocol{
+		Payload: struct {
+			Name string `json:"name"`
+		}{},
+	}
+	if err := json.Unmarshal(packet.Data, &proto); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("subject:", proto.Subject, "name:", proto.Payload)
+
+	if err := sess.SendPacket(codec.TLVPacket{
+		PacketHead: codec.PacketHead{
+			Type:      0x01,
+			Version:   1,
+			ID:        1,
+			Timestamp: time.Now().Unix(),
+			Length:    54,
+		},
+		Data: []byte(`{"subject":"upload_file_resp","payload":{"name":"123.txt"}}`),
+	}); err != nil {
+		panic(err)
+	}
+
+	fmt.Println("ready to open stream")
+
+	stream, err := sess.Stream()
+	if err != nil {
+		panic(err)
+	}
+	defer stream.Close()
+
+	fmt.Println("stream opened")
+
+	bytes := make([]byte, 4096)
+	for {
+		n, err := stream.Read(bytes)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(bytes[:n])
+	}
+
+
+
+}
+
+type Protocol struct {
+	Subject string      `json:"subject"`
+	Source  string      `json:"source"`
+	Payload interface{} `json:"payload"`
 }

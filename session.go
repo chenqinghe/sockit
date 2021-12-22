@@ -122,5 +122,11 @@ func (s *Session) RemoteAddr() net.Addr {
 }
 
 func (s *Session) Stream() (Streamer, error) {
-	return s.c.Stream()
+	type streamer interface {
+		Stream() (Streamer, error)
+	}
+	if t, ok := s.c.(streamer); ok {
+		return t.Stream()
+	}
+	return nil, errors.New("unsupported underline connection")
 }

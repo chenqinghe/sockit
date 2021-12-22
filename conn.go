@@ -2,12 +2,13 @@ package sockit
 
 import (
 	"bytes"
-	"encoding/hex"
+	"errors"
 	"fmt"
-	"io"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Conn interface {
@@ -21,8 +22,8 @@ type Conn interface {
 
 	ReadPacket() (Packet, error)
 
-	// Stream create s streamer, all the data was treated as raw binary data
-	Stream() (Streamer, error)
+	// Stream create a streamer, all the data was treated as raw binary data
+	//Stream() (Streamer, error)
 
 	Close() error
 }
@@ -35,6 +36,9 @@ type conn struct {
 
 	codec Codec
 
+	streamOpened int32
+	cond         *sync.Cond
+
 	closed int32
 }
 
@@ -46,6 +50,7 @@ func newConn(c net.Conn, codec Codec) *conn {
 		wrLock: &sync.Mutex{},
 		Conn:   c,
 		codec:  codec,
+		cond:   sync.NewCond(&sync.Mutex{}),
 		closed: 0,
 	}
 }
@@ -61,58 +66,88 @@ func (c *conn) SendPacket(p Packet) error {
 	c.wrLock.Lock()
 	defer c.wrLock.Unlock()
 
-	var wr io.Writer = c.Conn
-	if DebugReadSend {
-		wr = debugWriter{c.Conn}
-	}
-
-	return c.codec.Write(wr, p)
+	return c.codec.Write(c, p)
 }
 
 func (c *conn) ReadPacket() (Packet, error) {
 	c.rdLock.Lock()
 	defer c.rdLock.Unlock()
 
-	var rd io.Reader = c.Conn
-	if DebugReadSend {
-		rd = debugReader{c}
+	for c.streamOpened == 1 {
+		c.cond.Wait()
 	}
-	return c.codec.Read(rd)
+
+	return c.codec.Read(c)
 }
 
 func (c *conn) Stream() (Streamer, error) {
-	c.rdLock.Lock()
-	c.wrLock.Lock()
+
+	c.cond.L.Lock()
+	if c.streamOpened == 1 {
+		return nil, errors.New("a stream already opened, please close it first")
+	}
+	c.cond.L.Unlock()
+
+	c.Conn.SetDeadline(time.Now().Add(-time.Second)) // to ensure all io operations timeout and returned immediately
+
+	c.Conn.SetDeadline(time.Time{}) // cancel timeout
 
 	return &streamer{
-		conn: c.Conn,
-		buf:  bytes.NewBuffer(nil),
+		rw:  c.Conn,
+		buf: bytes.NewBuffer(nil),
 		releaseFunc: func() {
-			c.wrLock.Unlock()
-			c.rdLock.Unlock()
+			c.cond.L.Lock()
+			c.streamOpened = 0
+			c.cond.L.Unlock()
+
+			c.cond.Broadcast()
 		},
 	}, nil
 }
 
-var DebugReadSend = false
+func (c *conn) Read(p []byte) (int, error) {
+RETRY:
+	c.cond.L.Lock()
+	for c.streamOpened == 1 {
+		c.cond.Wait()
+	}
+	c.cond.L.Unlock()
 
-type debugWriter struct {
-	w io.Writer
+	n, err := c.Conn.Read(p)
+	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			if n > 0 {
+				return n, nil
+			}
+			goto RETRY
+		}
+
+		return n, err
+	}
+	fmt.Println(string(p[:n]))
+
+	return n, nil
 }
 
-func (dw debugWriter) Write(p []byte) (int, error) {
-	n, err := dw.w.Write(p)
-	fmt.Println("write data:", p[:n])
-	fmt.Println("write data hex:", hex.EncodeToString(p[:n]))
-	return n, err
-}
+func (c *conn) Write(p []byte) (int, error) {
+RETRY:
+	c.cond.L.Lock()
+	for c.streamOpened == 1 {
+		c.cond.Wait()
+	}
+	c.cond.L.Unlock()
 
-type debugReader struct {
-	rd io.Reader
-}
+	n, err := c.Conn.Write(p)
+	if err != nil {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			if n > 0 {
+				return n, nil
+			}
+			goto RETRY
+		}
 
-func (r debugReader) Read(p []byte) (int, error) {
-	n, err := r.rd.Read(p)
-	fmt.Println("read data:", p[:n])
-	return n, err
+		return n, err
+	}
+
+	return n, nil
 }
