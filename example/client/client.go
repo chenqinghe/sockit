@@ -19,7 +19,7 @@ func main() {
 		KeepaliveType:     0x03,
 		KeepaliveRespType: 0x04,
 	}
-	client := sockit.NewClient(tlvCodec, handler, &sockit.NewClientOption{
+	client := sockit.NewClient(tlvCodec, handler, &sockit.NewClientOptions{
 		KeepalivePeriod: time.Second,
 		EnableKeepalive: true,
 		HeartbeatPacketFactory: func() sockit.Packet {
