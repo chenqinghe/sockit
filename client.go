@@ -11,12 +11,12 @@ type Client struct {
 	mgr   ConnManager
 	codec Codec
 
-	opt *NewClientOption
+	opts *NewClientOptions
 
 	closed chan struct{}
 }
 
-type NewClientOption struct {
+type NewClientOptions struct {
 	EnableKeepalive        bool
 	KeepalivePeriod        time.Duration
 	HeartbeatPacketFactory func() Packet
@@ -26,16 +26,16 @@ type NewClientOption struct {
 	ReconnectPolicy        ReconnectPolicy
 }
 
-func NewClient(codec Codec, handler Handler, opt *NewClientOption) *Client {
-	if opt == nil {
-		opt = &NewClientOption{
+func NewClient(codec Codec, handler Handler, opts *NewClientOptions) *Client {
+	if opts == nil {
+		opts = &NewClientOptions{
 			EnableKeepalive: false,
 			NeedReconnect:   false,
 		}
 	}
 
 	cli := &Client{
-		opt:    opt,
+		opts:   opts,
 		codec:  codec,
 		closed: make(chan struct{}),
 	}
@@ -45,7 +45,7 @@ func NewClient(codec Codec, handler Handler, opt *NewClientOption) *Client {
 		},
 	})
 
-	if cli.opt.EnableKeepalive {
+	if cli.opts.EnableKeepalive {
 		go cli.heartbeat()
 	}
 
@@ -59,8 +59,8 @@ func (cli *Client) Dial(network string, addr string) (*Session, error) {
 	}
 
 	conn := newConn(c, cli.codec)
-	if cli.opt.OnConnected != nil {
-		if err := cli.opt.OnConnected(conn); err != nil {
+	if cli.opts.OnConnected != nil {
+		if err := cli.opts.OnConnected(conn); err != nil {
 			return nil, err
 		}
 	}
@@ -75,7 +75,7 @@ type ReconnectPolicy interface {
 
 func (cli *Client) reconnect(sess *Session) {
 	addr := sess.RemoteAddr()
-	policy := cli.opt.ReconnectPolicy
+	policy := cli.opts.ReconnectPolicy
 
 	for policy.Retry() && cli.needReconnect(sess) {
 		if s, err := cli.Dial(addr.Network(), addr.String()); err == nil {
@@ -95,7 +95,7 @@ func (cli *Client) reconnect(sess *Session) {
 }
 
 func (cli *Client) needReconnect(sess *Session) bool {
-	if !cli.opt.NeedReconnect {
+	if !cli.opts.NeedReconnect {
 		return false
 	}
 
@@ -103,12 +103,12 @@ func (cli *Client) needReconnect(sess *Session) bool {
 }
 
 func (cli *Client) heartbeat() {
-	ticker := time.NewTicker(cli.opt.KeepalivePeriod)
+	ticker := time.NewTicker(cli.opts.KeepalivePeriod)
 	for {
 		select {
 		case <-ticker.C:
 			cli.mgr.RangeSession(func(s *Session) {
-				if err := s.SendPacket(cli.opt.HeartbeatPacketFactory()); err != nil {
+				if err := s.SendPacket(cli.opts.HeartbeatPacketFactory()); err != nil {
 					logrus.WithFields(logrus.Fields{
 						"sessionId":  s.Id(),
 						"remoteAddr": s.RemoteAddr().String(),

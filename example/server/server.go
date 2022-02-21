@@ -24,13 +24,10 @@ func main() {
 
 	handler.mgr = mgr
 
-	srv := sockit.Server{
-		Manager: mgr,
-		Codec: &codec.TLVCodec{
-			KeepaliveType:     0x03,
-			KeepaliveRespType: 0x04,
-		},
-	}
+	srv := sockit.NewServer(mgr, &codec.TLVCodec{
+		KeepaliveType:     0x03,
+		KeepaliveRespType: 0x04,
+	})
 
 	go func() {
 		if err := srv.ListenAndServe(":9090"); err != nil {
