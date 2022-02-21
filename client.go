@@ -100,7 +100,7 @@ func (cli *Client) needReconnect(sess *Session) bool {
 		return false
 	}
 
-	return sess.manuallyClosed
+	return !sess.manuallyClosed
 }
 
 func (cli *Client) heartbeat() {
@@ -128,6 +128,9 @@ func (cli *Client) heartbeat() {
 		}
 	}
 }
+
+func (cli *Client) FindSession(id int64) (*Session, bool) { return cli.mgr.FindSession(id) }
+func (cli *Client) RangeSession(fn func(sess *Session))   { cli.mgr.RangeSession(fn) }
 
 func (cli *Client) Close() error {
 	close(cli.closed)

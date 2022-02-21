@@ -47,7 +47,7 @@ func NewServer(mgr ConnManager, codec Codec) *Server {
 
 var ErrorServerClosed = fmt.Errorf("server closed")
 
-// ListenAndServe is like http.ListenAndServe, it listen given address
+// ListenAndServe is like http.ListenAndServe, it listens given address
 // and accept new connections to the server, then pass the connection to ConnManager.
 func (s *Server) ListenAndServe(addr string) error {
 	s.addr = addr
