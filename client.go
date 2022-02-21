@@ -39,13 +39,11 @@ func NewClient(codec Codec, handler Handler, opt *NewClientOption) *Client {
 		codec:  codec,
 		closed: make(chan struct{}),
 	}
-
-	mgr := NewManager(handler, &NewManagerOptions{
-		OnClose: func(s *Session) {
+	cli.mgr = NewManager(handler, &NewManagerOptions{
+		AfterSessionClosed: func(s *Session) {
 			cli.reconnect(s)
 		},
 	})
-	cli.mgr = mgr
 
 	if cli.opt.EnableKeepalive {
 		go cli.heartbeat()
@@ -80,7 +78,8 @@ func (cli *Client) reconnect(sess *Session) {
 	policy := cli.opt.ReconnectPolicy
 
 	for policy.Retry() && cli.needReconnect(sess) {
-		if _, err := cli.Dial(addr.Network(), addr.String()); err == nil {
+		if s, err := cli.Dial(addr.Network(), addr.String()); err == nil {
+			*sess = *s // replace old session
 			return
 		}
 

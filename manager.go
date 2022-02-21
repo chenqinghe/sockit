@@ -16,10 +16,10 @@ type Manager struct {
 	// conns stores all sessions
 	conns map[int64]*Session
 
-	Authenticator Authenticator
+	authenticator Authenticator
 	handler       Handler
 
-	opt             *NewManagerOptions
+	opts            *NewManagerOptions
 	keepaliveTicker *time.Ticker
 
 	closed    chan struct{}
@@ -29,22 +29,34 @@ type Manager struct {
 var _ ConnManager = (*Manager)(nil)
 
 type NewManagerOptions struct {
+	// Authenticator is used to verify accepted connection is valid
+	Authenticator Authenticator
+
+	// KeepaliveTick indicates time duration between every connection checking
 	KeepaliveTick time.Duration
-	OnLogin       func(s *Session)
-	OnClose       func(s *Session)
+
+	// OnLogin specify session login event callback
+	OnSessionCreated func(s *Session)
+
+	// BeforeSessionClosed specify a pre-hook of session closed
+	BeforeSessionClosed func(s *Session)
+
+	// AfterSessionClosed specify a post-hook of session closed
+	AfterSessionClosed func(s *Session)
 }
 
-func NewManager(handler Handler, opt *NewManagerOptions) *Manager {
-	if opt == nil {
-		opt = &NewManagerOptions{}
+func NewManager(handler Handler, opts *NewManagerOptions) *Manager {
+	if opts == nil {
+		opts = &NewManagerOptions{}
 	}
 	m := &Manager{
-		mu:        &sync.RWMutex{},
-		conns:     make(map[int64]*Session),
-		handler:   handler,
-		opt:       opt,
-		closed:    make(chan struct{}),
-		closeDone: make(chan struct{}),
+		mu:            &sync.RWMutex{},
+		conns:         make(map[int64]*Session),
+		handler:       handler,
+		authenticator: opts.Authenticator,
+		opts:          opts,
+		closed:        make(chan struct{}),
+		closeDone:     make(chan struct{}),
 	}
 
 	return m
@@ -53,8 +65,8 @@ func NewManager(handler Handler, opt *NewManagerOptions) *Manager {
 func (m *Manager) StoreConn(c Conn) (*Session, error) {
 	var user User
 	var err error
-	if m.Authenticator != nil {
-		user, err = m.Authenticator.Auth(c)
+	if m.authenticator != nil {
+		user, err = m.authenticator.Auth(c)
 		if err != nil {
 			logrus.Info("user auth failed: " + err.Error())
 			c.Close()
@@ -77,15 +89,15 @@ func (m *Manager) StoreConn(c Conn) (*Session, error) {
 
 	logrus.Debug("accept a new connection, remote addr:" + c.RemoteAddr().String())
 
-	if m.opt.OnLogin != nil {
-		m.opt.OnLogin(sess)
+	if m.opts.OnSessionCreated != nil {
+		m.opts.OnSessionCreated(sess)
 	}
 
 	return sess, nil
 }
 
 func (m *Manager) SetAuthenticator(authenticator Authenticator) {
-	m.Authenticator = authenticator
+	m.authenticator = authenticator
 }
 
 func (m *Manager) Close() error {
@@ -106,12 +118,19 @@ func (m *Manager) RemoveSession(id int64) error {
 		return nil
 	}
 
-	if m.opt.OnClose != nil {
-		m.opt.OnClose(sess)
+	if m.opts.BeforeSessionClosed != nil {
+		m.opts.BeforeSessionClosed(sess)
 	}
 
-	return sess.Close()
+	if err := sess.close(); err != nil {
+		return err
+	}
 
+	if m.opts.AfterSessionClosed != nil {
+		m.opts.AfterSessionClosed(sess)
+	}
+
+	return nil
 }
 
 func (m *Manager) FindSession(id int64) (*Session, bool) {
@@ -144,7 +163,7 @@ func (m *Manager) SetKeepAlive(b bool) {
 				case <-m.keepaliveTicker.C:
 					now := time.Now()
 					m.RangeSession(func(s *Session) {
-						if now.Sub(s.lastPackTs) > m.opt.KeepaliveTick {
+						if now.Sub(s.lastPackTs) > m.opts.KeepaliveTick {
 							logrus.WithFields(logrus.Fields{
 								"remoteAddr": s.RemoteAddr().String(),
 								"sessionID":  s.Id(),
@@ -162,7 +181,7 @@ func (m *Manager) SetKeepAlive(b bool) {
 }
 
 func (m *Manager) SetKeepAlivePeriod(t time.Duration) {
-	m.opt.KeepaliveTick = t
+	m.opts.KeepaliveTick = t
 	if m.keepaliveTicker == nil {
 		m.keepaliveTicker = time.NewTicker(t)
 	} else {

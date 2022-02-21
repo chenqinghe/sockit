@@ -16,8 +16,9 @@ func main() {
 
 	//proxy.DebugReadSend = true
 
-	mgr := sockit.NewManager(handler, nil)
-	mgr.Authenticator = &tokenAuthenticator{}
+	mgr := sockit.NewManager(handler, &sockit.NewManagerOptions{
+		Authenticator: &tokenAuthenticator{},
+	})
 	mgr.SetKeepAlivePeriod(time.Second * 30)
 	mgr.SetKeepAlive(true)
 

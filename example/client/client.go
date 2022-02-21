@@ -9,29 +9,34 @@ import (
 	"time"
 
 	"github.com/chenqinghe/sockit"
-	codeclib "github.com/chenqinghe/sockit/codec"
+	"github.com/chenqinghe/sockit/codec"
+	"github.com/chenqinghe/sockit/reconnectpolicy"
 )
 
 func main() {
 	handler := &packetHandler{}
-	codec := &codeclib.TLVCodec{
+	tlvCodec := &codec.TLVCodec{
 		KeepaliveType:     0x03,
 		KeepaliveRespType: 0x04,
 	}
-	client := sockit.NewClient(codec, handler, &sockit.NewClientOption{
+	client := sockit.NewClient(tlvCodec, handler, &sockit.NewClientOption{
 		KeepalivePeriod: time.Second,
 		EnableKeepalive: true,
 		HeartbeatPacketFactory: func() sockit.Packet {
-			return codeclib.TLVPacket{
-				PacketHead: codeclib.PacketHead{
+			return codec.TLVPacket{
+				PacketHead: codec.PacketHead{
 					Type: 0x03,
 				},
 			}
 		},
+		NeedReconnect: true,
+		ReconnectPolicy: reconnectpolicy.ConstTime{
+			Duration: time.Second,
+		},
 		OnConnected: func(c sockit.Conn) error {
-			data := []byte(`{"token":"fasdfsdfasdfadsf"}`)
-			return c.SendPacket(codeclib.TLVPacket{
-				PacketHead: codeclib.PacketHead{
+			data := []byte(`{"token":"here is your token"}`)
+			return c.SendPacket(codec.TLVPacket{
+				PacketHead: codec.PacketHead{
 					Type:      0x01,
 					Version:   0x01,
 					ID:        1,
@@ -47,9 +52,28 @@ func main() {
 
 	handler.cli = client
 
-	if _, err := client.Dial("tcp", "127.0.0.1:9090"); err != nil {
+	sess, err := client.Dial("tcp", "127.0.0.1:9090")
+	if err != nil {
 		panic(err)
 	}
+
+	go func() {
+		for {
+			time.Sleep(time.Second * 5)
+			if err := sess.SendPacket(codec.TLVPacket{
+				PacketHead: codec.PacketHead{
+					Type:      0x01,
+					Version:   0x01,
+					ID:        1,
+					Timestamp: time.Now().Unix(),
+					Length:    11,
+				},
+				Data: []byte("hello world"),
+			}); err != nil {
+				fmt.Println("send packet error:", err)
+			}
+		}
+	}()
 
 	ch := make(chan os.Signal, 1)
 
@@ -63,7 +87,7 @@ type packetHandler struct {
 }
 
 func (h *packetHandler) Handle(p sockit.Packet, s *sockit.Session) {
-	packet := p.(codeclib.TLVPacket)
+	packet := p.(codec.TLVPacket)
 
 	if packet.IsKeepAlive() {
 		return

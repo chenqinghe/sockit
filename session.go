@@ -95,18 +95,21 @@ func (s *Session) Get(key string) (interface{}, bool) {
 	return val, ok
 }
 
-func (s *Session) Close() error {
+func (s *Session) close() error {
 	select {
 	case <-s.closed:
 		return nil
 	default:
 	}
-	s.manuallyClosed = true
 	close(s.closed)
+	return s.c.Close()
+}
+
+func (s *Session) Close() error {
 	if err := s.mgr.RemoveSession(s.Id()); err != nil {
 		return err
 	}
-	return s.c.Close()
+	return s.close()
 }
 
 func (s *Session) SendPacket(p Packet) error {
