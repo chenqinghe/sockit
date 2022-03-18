@@ -16,6 +16,10 @@ type Manager struct {
 	// conns stores all sessions
 	conns map[int64]*Session
 
+	// users stores all login user ids
+	ulock *sync.RWMutex
+	users map[string]*Session
+
 	authenticator Authenticator
 	handler       Handler
 
@@ -31,6 +35,10 @@ var _ ConnManager = (*Manager)(nil)
 type NewManagerOptions struct {
 	// Authenticator is used to verify accepted connection is valid
 	Authenticator Authenticator
+
+	// ExclusiveUser indicates that only one client connect permitted with same user id
+	// if user with same id login again, the previous one will be kicked out.
+	ExclusiveUser bool
 
 	// KeepaliveTick indicates time duration between every connection checking
 	KeepaliveTick time.Duration
@@ -52,6 +60,7 @@ func NewManager(handler Handler, opts *NewManagerOptions) *Manager {
 	m := &Manager{
 		mu:            &sync.RWMutex{},
 		conns:         make(map[int64]*Session),
+		users:         make(map[string]*Session),
 		handler:       handler,
 		authenticator: opts.Authenticator,
 		opts:          opts,
@@ -79,6 +88,18 @@ func (m *Manager) StoreConn(c Conn) (*Session, error) {
 			c.Close()
 			return nil, errors.New("invalid user")
 		}
+
+		if m.opts.ExclusiveUser {
+			m.ulock.Lock()
+			if s, ok := m.users[user.Id()]; ok {
+				s.Close()
+				logrus.WithFields(logrus.Fields{
+					"remoteAddr": c.RemoteAddr().String(),
+				}).Infoln("same user login again, close previous")
+			}
+			delete(m.users, user.Id())
+			m.ulock.Unlock()
+		}
 	}
 
 	sess := NewSession(c, m, user, m.handler)
@@ -86,6 +107,10 @@ func (m *Manager) StoreConn(c Conn) (*Session, error) {
 	m.mu.Lock()
 	m.conns[sess.Id()] = sess
 	m.mu.Unlock()
+
+	m.ulock.Lock()
+	m.users[sess.User().Id()] = sess
+	m.ulock.Unlock()
 
 	logrus.Debug("accept a new connection, remote addr:" + c.RemoteAddr().String())
 
@@ -117,6 +142,10 @@ func (m *Manager) RemoveSession(id int64) error {
 	if !ok {
 		return nil
 	}
+
+	m.ulock.Lock()
+	delete(m.users, sess.User().Id())
+	m.ulock.Unlock()
 
 	if m.opts.BeforeSessionClosed != nil {
 		m.opts.BeforeSessionClosed(sess)
