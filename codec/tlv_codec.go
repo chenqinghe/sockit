@@ -14,8 +14,8 @@ import (
 )
 
 type TLVCodec struct {
-	KeepaliveType     uint8
-	KeepaliveRespType uint8
+	KeepaliveType     int32
+	KeepaliveRespType int32
 }
 
 type TLVPacket struct {
@@ -26,17 +26,17 @@ type TLVPacket struct {
 }
 
 type PacketHead struct {
-	Type      uint8
-	Version   uint8
-	_         [2]byte
-	ID        int32
+	Label     uint16 // 协议标识
+	Version   uint16
+	Type      int32
+	ID        int64
 	Timestamp int64
-	Length    uint32
+	Length    uint64
 }
 
 var headSize = binary.Size(&PacketHead{})
 
-func (p TLVPacket) Id() int32 {
+func (p TLVPacket) Id() int64 {
 	return p.ID
 }
 
@@ -93,7 +93,7 @@ func (c TLVCodec) Write(writer io.Writer, p sockit.Packet) error {
 		return fmt.Errorf("unknown packet type: %s", reflect.TypeOf(p).String())
 	}
 	pkt.Timestamp = time.Now().UnixNano() / 1e6
-	pkt.Length = uint32(len(pkt.Data))
+	pkt.Length = uint64(len(pkt.Data))
 
 	buf := bytes.NewBuffer(nil)
 

@@ -19,13 +19,13 @@ type JsonPacket struct {
 	Version   uint8           `json:"version"`
 	Source    int16           `json:"source"`
 	Subject   int32           `json:"subject"`
-	ID        int32           `json:"id"`
+	ID        int64           `json:"id"`
 	Timestamp int64           `json:"time"`
 	Data      json.RawMessage `json:"data"`
 }
 
 func (p JsonPacket) IsKeepAlive() bool { return p.Subject == 0 }
-func (p JsonPacket) Id() int32         { return p.ID }
+func (p JsonPacket) Id() int64         { return p.ID }
 func (p JsonPacket) Time() time.Time   { return time.Unix(p.Timestamp, 0) }
 
 func (codec *JsonCodec) Read(reader io.Reader) (sockit.Packet, error) {

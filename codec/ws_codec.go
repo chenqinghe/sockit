@@ -18,7 +18,7 @@ type WebsocketPacket struct {
 	Data []byte
 }
 
-func (p WebsocketPacket) Id() int32 {
+func (p WebsocketPacket) Id() int64 {
 	return 0
 }
 
