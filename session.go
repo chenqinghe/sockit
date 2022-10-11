@@ -1,6 +1,7 @@
 package sockit
 
 import (
+	"context"
 	"errors"
 	"github.com/sirupsen/logrus"
 	"net"
@@ -23,6 +24,9 @@ type Session struct {
 
 	lastPackTs time.Time // 最后一个收到包的时间
 
+	reqLock  *sync.RWMutex
+	requests map[int64]chan Packet
+
 	manuallyClosed bool
 	closed         chan struct{}
 }
@@ -38,6 +42,8 @@ func NewSession(c Conn, mgr ConnManager, user User, handler Handler) *Session {
 		handler:  handler,
 		dataLock: &sync.RWMutex{},
 		data:     make(map[string]interface{}),
+		reqLock:  &sync.RWMutex{},
+		requests: make(map[int64]chan Packet),
 		closed:   make(chan struct{}),
 	}
 
@@ -67,7 +73,16 @@ func (s *Session) readPacket() {
 
 		s.lastPackTs = time.Now()
 
-		go s.handler.Handle(packet, s)
+		s.reqLock.RLock()
+		ch, ok := s.requests[packet.Id()]
+		s.reqLock.RUnlock()
+		if ok {
+			ch <- packet
+			close(ch)
+			continue
+		} else {
+			go s.handler.Handle(packet, s)
+		}
 	}
 }
 
@@ -114,6 +129,37 @@ func (s *Session) Close() error {
 
 func (s *Session) SendPacket(p Packet) error {
 	return s.c.SendPacket(p)
+}
+
+func (s *Session) SendRequest(p Packet) (<-chan Packet, error) {
+	ch := make(chan Packet, 1)
+	s.reqLock.Lock()
+	s.requests[p.Id()] = ch
+
+	if err := s.SendPacket(p); err != nil {
+		return nil, err
+	}
+
+	return ch, nil
+}
+
+func (s *Session) SendRequestTimeout(p Packet, timeout time.Duration) (Packet, error) {
+	ch := make(chan Packet, 1)
+	s.reqLock.Lock()
+	s.requests[p.Id()] = ch
+
+	if err := s.SendPacket(p); err != nil {
+		return nil, err
+	}
+
+	timer := time.NewTimer(timeout)
+	select {
+	case p := <-ch:
+		timer.Stop()
+		return p, nil
+	case <-timer.C:
+		return nil, context.DeadlineExceeded
+	}
 }
 
 func (s *Session) LocalAddr() net.Addr {
