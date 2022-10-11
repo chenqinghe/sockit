@@ -7,3 +7,5 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/sirupsen/logrus v1.8.1
 )
+
+require golang.org/x/sys v0.0.0-20221010170243-090e33056c14 // indirect

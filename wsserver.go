@@ -88,7 +88,7 @@ func (c *WSConn) ReadPacket() (Packet, error) {
 	}
 
 	return WebsocketPacket{
-		id:   atomic.AddInt32(&idGen, 1),
+		id:   atomic.AddInt64(&idGen, 1),
 		ts:   time.Now(),
 		Type: typ,
 		Data: data,
@@ -116,13 +116,13 @@ func (h *wsHandler) Handle(c *websocket.Conn) {
 }
 
 type WebsocketPacket struct {
-	id   int32
+	id   int64
 	ts   time.Time
 	Type int
 	Data []byte
 }
 
-func (p WebsocketPacket) Id() int32 {
+func (p WebsocketPacket) Id() int64 {
 	return p.id
 }
 
@@ -130,4 +130,4 @@ func (p WebsocketPacket) Time() time.Time {
 	return p.ts
 }
 
-var idGen int32
+var idGen int64
