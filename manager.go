@@ -109,9 +109,11 @@ func (m *Manager) StoreConn(c Conn) (*Session, error) {
 	m.conns[sess.Id()] = sess
 	m.mu.Unlock()
 
-	m.ulock.Lock()
-	m.users[sess.User().Id()] = sess
-	m.ulock.Unlock()
+	if user != nil {
+		m.ulock.Lock()
+		m.users[user.Id()] = sess
+		m.ulock.Unlock()
+	}
 
 	logrus.Debug("accept a new connection, remote addr:" + c.RemoteAddr().String())
 
