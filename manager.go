@@ -68,6 +68,9 @@ func NewManager(handler Handler, opts *NewManagerOptions) *Manager {
 		closed:        make(chan struct{}),
 		closeDone:     make(chan struct{}),
 	}
+	if opts.KeepaliveTick != 0 {
+		m.keepaliveTicker = time.NewTicker(opts.KeepaliveTick)
+	}
 
 	return m
 }

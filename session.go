@@ -35,16 +35,17 @@ var idGenerator int64
 
 func NewSession(c Conn, mgr ConnManager, user User, handler Handler) *Session {
 	sess := &Session{
-		id:       atomic.AddInt64(&idGenerator, 1),
-		c:        c,
-		mgr:      mgr,
-		user:     user,
-		handler:  handler,
-		dataLock: &sync.RWMutex{},
-		data:     make(map[string]interface{}),
-		reqLock:  &sync.RWMutex{},
-		requests: make(map[int64]chan Packet),
-		closed:   make(chan struct{}),
+		id:         atomic.AddInt64(&idGenerator, 1),
+		c:          c,
+		mgr:        mgr,
+		user:       user,
+		handler:    handler,
+		dataLock:   &sync.RWMutex{},
+		data:       make(map[string]interface{}),
+		reqLock:    &sync.RWMutex{},
+		requests:   make(map[int64]chan Packet),
+		closed:     make(chan struct{}),
+		lastPackTs: time.Now(),
 	}
 
 	go sess.readPacket()
@@ -79,7 +80,9 @@ func (s *Session) readPacket() {
 		if ok {
 			ch <- packet
 			close(ch)
-			continue
+			s.reqLock.Lock()
+			delete(s.requests, packet.Id())
+			s.reqLock.Unlock()
 		} else {
 			go s.handler.Handle(packet, s)
 		}
@@ -135,6 +138,7 @@ func (s *Session) SendRequest(p Packet) (<-chan Packet, error) {
 	ch := make(chan Packet, 1)
 	s.reqLock.Lock()
 	s.requests[p.Id()] = ch
+	s.reqLock.Unlock()
 
 	if err := s.SendPacket(p); err != nil {
 		return nil, err
@@ -147,6 +151,7 @@ func (s *Session) SendRequestTimeout(p Packet, timeout time.Duration) (Packet, e
 	ch := make(chan Packet, 1)
 	s.reqLock.Lock()
 	s.requests[p.Id()] = ch
+	s.reqLock.Unlock()
 
 	if err := s.SendPacket(p); err != nil {
 		return nil, err

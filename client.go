@@ -77,7 +77,7 @@ func (cli *Client) reconnect(sess *Session) {
 	addr := sess.RemoteAddr()
 	policy := cli.opts.ReconnectPolicy
 
-	for policy.Retry() && cli.needReconnect(sess) {
+	for cli.needReconnect(sess) && policy.Retry() {
 		if s, err := cli.Dial(addr.Network(), addr.String()); err == nil {
 			*sess = *s // replace old session
 			return
