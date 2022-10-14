@@ -60,6 +60,7 @@ func NewManager(handler Handler, opts *NewManagerOptions) *Manager {
 	m := &Manager{
 		mu:            &sync.RWMutex{},
 		conns:         make(map[int64]*Session),
+		ulock:         &sync.RWMutex{},
 		users:         make(map[string]*Session),
 		handler:       handler,
 		authenticator: opts.Authenticator,
