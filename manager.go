@@ -146,9 +146,11 @@ func (m *Manager) RemoveSession(id int64) error {
 		return nil
 	}
 
-	m.ulock.Lock()
-	delete(m.users, sess.User().Id())
-	m.ulock.Unlock()
+	if sess.User() != nil {
+		m.ulock.Lock()
+		delete(m.users, sess.User().Id())
+		m.ulock.Unlock()
+	}
 
 	if m.opts.BeforeSessionClosed != nil {
 		m.opts.BeforeSessionClosed(sess)
