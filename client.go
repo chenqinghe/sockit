@@ -17,11 +17,11 @@ type Client struct {
 }
 
 type NewClientOptions struct {
-	Authenticator          Authenticator
 	EnableKeepalive        bool
 	KeepalivePeriod        time.Duration
 	HeartbeatPacketFactory func() Packet
 	OnConnected            func(c Conn) error
+	OnSessionCreated       func(s *Session)
 	OnClosed               func(session *Session)
 	NeedReconnect          bool
 	ReconnectPolicy        ReconnectPolicy
@@ -41,7 +41,7 @@ func NewClient(codec Codec, handler Handler, opts *NewClientOptions) *Client {
 		closed: make(chan struct{}),
 	}
 	cli.mgr = NewManager(handler, &NewManagerOptions{
-		Authenticator: opts.Authenticator,
+		OnSessionCreated: opts.OnSessionCreated,
 		AfterSessionClosed: func(s *Session) {
 			cli.reconnect(s)
 		},
@@ -80,6 +80,8 @@ func (cli *Client) reconnect(sess *Session) {
 	policy := cli.opts.ReconnectPolicy
 
 	for cli.needReconnect(sess) && policy.Retry() {
+		logrus.WithField("sessionId", sess.id).WithField("remoteAddr", sess.RemoteAddr().String()).Debugln("session reconnect")
+
 		if s, err := cli.Dial(addr.Network(), addr.String()); err == nil {
 			s.data = sess.data
 			s.user = sess.user
