@@ -80,7 +80,6 @@ func (cli *Client) reconnect(sess *Session) {
 	for cli.needReconnect(sess) && policy.Retry() {
 		if s, err := cli.Dial(addr.Network(), addr.String()); err == nil {
 			s.data = sess.data
-			s.id = sess.id
 			s.user = sess.user
 			s.lastPackTs = sess.lastPackTs
 			s.requests = sess.requests
