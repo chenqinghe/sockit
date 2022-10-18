@@ -88,7 +88,13 @@ func (cli *Client) reconnect(sess *Session) {
 			s.lastPackTs = sess.lastPackTs
 			s.requests = sess.requests
 			*sess = *s // replace old session
+			logrus.WithFields(logrus.Fields{"remoteAddr": sess.RemoteAddr().String(), "sessionId": sess.id}).Debugln("reconnect successful")
 			return
+		} else {
+			logrus.WithFields(logrus.Fields{
+				"remoteAddr": sess.RemoteAddr().String(),
+				"sessionId":  sess.id,
+			}).Errorln("reconnect error", err)
 		}
 
 		timer := policy.Timer()
