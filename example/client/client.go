@@ -41,7 +41,7 @@ func main() {
 					Version:   0x01,
 					ID:        1,
 					Timestamp: time.Now().Unix(),
-					Length:    uint32(len(data)),
+					Length:    uint64(len(data)),
 				},
 				Data: data,
 			})

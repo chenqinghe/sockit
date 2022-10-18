@@ -70,6 +70,22 @@ func (cli *Client) Dial(network string, addr string) (*Session, error) {
 	return cli.mgr.StoreConn(conn)
 }
 
+func (cli *Client) DialTimeout(network string, addr string, timeout time.Duration) (*Session, error) {
+	c, err := net.DialTimeout(network, addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	conn := newConn(c, cli.codec)
+	if cli.opts.OnConnected != nil {
+		if err := cli.opts.OnConnected(conn); err != nil {
+			return nil, err
+		}
+	}
+
+	return cli.mgr.StoreConn(conn)
+}
+
 type ReconnectPolicy interface {
 	Retry() bool
 	Timer() *time.Timer
@@ -82,7 +98,7 @@ func (cli *Client) reconnect(sess *Session) {
 	for cli.needReconnect(sess) && policy.Retry() {
 		logrus.WithField("sessionId", sess.id).WithField("remoteAddr", sess.RemoteAddr().String()).Debugln("session reconnect")
 
-		if s, err := cli.Dial(addr.Network(), addr.String()); err == nil {
+		if s, err := cli.DialTimeout(addr.Network(), addr.String(), time.Second*5); err == nil {
 			s.data = sess.data
 			s.user = sess.user
 			s.lastPackTs = sess.lastPackTs
