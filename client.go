@@ -17,11 +17,11 @@ type Client struct {
 }
 
 type NewClientOptions struct {
+	Authenticator          Authenticator
 	EnableKeepalive        bool
 	KeepalivePeriod        time.Duration
 	HeartbeatPacketFactory func() Packet
 	OnConnected            func(c Conn) error
-	OnSessionCreated       func(s *Session)
 	OnClosed               func(session *Session)
 	NeedReconnect          bool
 	ReconnectPolicy        ReconnectPolicy
@@ -41,7 +41,7 @@ func NewClient(codec Codec, handler Handler, opts *NewClientOptions) *Client {
 		closed: make(chan struct{}),
 	}
 	cli.mgr = NewManager(handler, &NewManagerOptions{
-		OnSessionCreated: opts.OnSessionCreated,
+		Authenticator: opts.Authenticator,
 		AfterSessionClosed: func(s *Session) {
 			cli.reconnect(s)
 		},
