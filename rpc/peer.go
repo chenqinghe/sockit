@@ -14,31 +14,37 @@ type Peer struct {
 
 	client      *sockit.Client
 	cliInitOnce sync.Once
-	cliHandler  sockit.Handler
 
 	server      *sockit.Server
 	srvInitOnce sync.Once
-	srvHandler  sockit.Handler
 }
 
 type PeerOption struct {
 	Authenticator sockit.Authenticator
+
+	SrvHandler sockit.Handler
+	CliHandler sockit.Handler
 }
 
-var defaultOpt = &PeerOption{}
+var defaultOpt = &PeerOption{
+	SrvHandler: NewDispatchHandler(),
+	CliHandler: NewDispatchHandler(),
+}
 
 func NewPeer(opt *PeerOption) *Peer {
 	if opt == nil {
 		opt = defaultOpt
 	}
 
-	return &Peer{} // todo
+	return &Peer{opt: opt} // todo
 }
 
 func (p *Peer) Dial(network string, addr string) (*sockit.Session, error) {
 	p.cliInitOnce.Do(func() {
-		p.cliHandler = NewDispatchHandler()
-		p.client = sockit.NewClient(codec.TLVCodec{}, p.cliHandler, &sockit.NewClientOptions{
+		p.client = sockit.NewClient(codec.TLVCodec{
+			KeepaliveType:     0x01,
+			KeepaliveRespType: 0x02,
+		}, p.opt.CliHandler, &sockit.NewClientOptions{
 			EnableKeepalive: true,
 			KeepalivePeriod: time.Second,
 			HeartbeatPacketFactory: func() sockit.Packet {
@@ -58,22 +64,16 @@ func (p *Peer) Dial(network string, addr string) (*sockit.Session, error) {
 
 func (p *Peer) ListenAndServe(addr string) error {
 	p.srvInitOnce.Do(func() {
-		p.srvHandler = NewDispatchHandler()
-		manager := sockit.NewManager(p.srvHandler, &sockit.NewManagerOptions{
+		manager := sockit.NewManager(p.opt.SrvHandler, &sockit.NewManagerOptions{
 			Authenticator: p.opt.Authenticator,
 			KeepaliveTick: time.Second * 2,
 		})
 		manager.SetKeepAlive(true)
-		p.server = sockit.NewServer(manager, codec.TLVCodec{})
+		p.server = sockit.NewServer(manager, codec.TLVCodec{
+			KeepaliveType:     0x01,
+			KeepaliveRespType: 0x02,
+		})
 	})
 
 	return p.server.ListenAndServe(addr)
-}
-
-func (p *Peer) ServerRegister(typ int32, fn HandleFunc) {
-	p.srvHandler.(*DispatchHandler).Register(typ, fn)
-}
-
-func (p *Peer) ClientRegister(typ int32, fn HandleFunc) {
-	p.cliHandler.(*DispatchHandler).Register(typ, fn)
 }

@@ -1,6 +1,7 @@
 package sockit
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -54,6 +55,30 @@ func (s *Server) ListenAndServe(addr string) error {
 	if err != nil {
 		return err
 	}
+
+	return s.Serve(listener)
+}
+
+func (s *Server) ListenAndServeTLS(addr string, certFile string, keyFile string) error {
+	l, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return err
+	}
+	config := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+
+	listener := tls.NewListener(l, config)
+
+	return s.Serve(listener)
+}
+
+func (s *Server) Serve(listener net.Listener) error {
 	s.listener = listener
 
 	for atomic.LoadInt32(&s.closed) != 1 {
@@ -71,7 +96,7 @@ func (s *Server) ListenAndServe(addr string) error {
 	return nil
 }
 
-// Close close the listener and ConnManager.
+// Close the listener and ConnManager.
 func (s *Server) Close() error {
 	if !atomic.CompareAndSwapInt32(&s.closed, 0, 1) {
 		return nil

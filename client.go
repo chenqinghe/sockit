@@ -1,6 +1,7 @@
 package sockit
 
 import (
+	"crypto/tls"
 	"net"
 	"time"
 
@@ -60,6 +61,21 @@ func (cli *Client) Dial(network string, addr string) (*Session, error) {
 		return nil, err
 	}
 
+	conn := newConn(c, cli.codec)
+	if cli.opts.OnConnected != nil {
+		if err := cli.opts.OnConnected(conn); err != nil {
+			return nil, err
+		}
+	}
+
+	return cli.mgr.StoreConn(conn)
+}
+
+func (cli *Client) DialTLS(network string, addr string, config *tls.Config) (*Session, error) {
+	c, err := tls.Dial(network, addr, config)
+	if err != nil {
+		return nil, err
+	}
 	conn := newConn(c, cli.codec)
 	if cli.opts.OnConnected != nil {
 		if err := cli.opts.OnConnected(conn); err != nil {

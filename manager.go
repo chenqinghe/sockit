@@ -1,6 +1,7 @@
 package sockit
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -25,6 +26,8 @@ type Manager struct {
 
 	opts            *NewManagerOptions
 	keepaliveTicker *time.Ticker
+	keepaliveCtx    context.Context
+	cancelKeepalive context.CancelFunc
 
 	closed    chan struct{}
 	closeDone chan struct{}
@@ -193,10 +196,26 @@ func (m *Manager) RangeSession(fn func(s *Session)) {
 }
 
 func (m *Manager) SetKeepAlive(b bool) {
+	if (b && m.keepaliveCtx != nil) || // already keepalive
+		(!b && m.keepaliveCtx == nil) { // not keepalive
+		return
+	}
+
+	if m.keepaliveCtx != nil && !b { // cancel keepalive
+		m.cancelKeepalive()
+		return
+	}
+
+	// start keepalive
 	if b {
+		m.keepaliveCtx, m.cancelKeepalive = context.WithCancel(context.Background())
 		go func() {
 			for {
 				select {
+				case <-m.keepaliveCtx.Done():
+					m.keepaliveCtx = nil
+					m.cancelKeepalive = nil
+					return
 				case <-m.keepaliveTicker.C:
 					now := time.Now()
 					m.RangeSession(func(s *Session) {

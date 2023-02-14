@@ -23,7 +23,21 @@ func NewDispatchHandler() *DispatchHandler {
 
 func (dh *DispatchHandler) Register(typ int32, fn HandleFunc) {
 	dh.handlers[typ] = func(pkt sockit.Packet, s *sockit.Session) {
-		fn(&Packet{pkt: pkt.(*codec.TLVPacket)}, s)
+		tlvPkt := pkt.(codec.TLVPacket)
+		buf := bytes.NewBuffer(nil)
+		fn(&Packet{pkt: &tlvPkt}, &Session{
+			Writer:  buf,
+			Session: s,
+		})
+		s.SendPacket(codec.TLVPacket{
+			PacketHead: codec.PacketHead{
+				Type:      int32(1<<30) | tlvPkt.Type,
+				ID:        pkt.Id(),
+				Timestamp: time.Now().UnixNano(),
+				Length:    uint64(buf.Len()),
+			},
+			Data: buf.Bytes(),
+		})
 	}
 }
 
@@ -36,7 +50,7 @@ func (dh *DispatchHandler) Handle(p sockit.Packet, s *sockit.Session) {
 	}
 }
 
-type HandleFunc func(pkt *Packet, s *sockit.Session)
+type HandleFunc func(pkt *Packet, s *Session)
 
 type Packet struct {
 	pkt *codec.TLVPacket
@@ -60,4 +74,9 @@ func (p Packet) Length() int {
 
 func (p Packet) BindJson(v interface{}) error {
 	return json.Unmarshal(p.pkt.Data, v)
+}
+
+type Session struct {
+	Writer *bytes.Buffer
+	*sockit.Session
 }
